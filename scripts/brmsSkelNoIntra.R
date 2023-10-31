@@ -432,9 +432,9 @@ brms.dat$wave <- strSplitMatrixReturn(brms.dat$X1, "_")[,2]
 brms.datAll <- brms.dat
 brms.datmod <- brms.datAll[which(brms.datAll$Block==3 & brms.datAll$subject %in% unique(brms.datAll$subject)[1:30]),]
 brms.datmod <- brms.datmod %>% group_by(X1) %>% 
-  mutate(statePrev = lag(currentState)) %>% 
-  mutate(timePrev = lag(stayLength)) %>% 
-  mutate(countVar = 1:n())
+  dplyr::mutate(statePrev = lag(currentState)) %>% 
+  dplyr::mutate(timePrev = lag(stayLength)) %>% 
+  dplyr::mutate(countVar = 1:n())
 # ## Now try plotting some of these trends
 # test <- brms.datAll %>% group_by(X1, X2) %>% 
 #   mutate(countVar = 1:n())
@@ -453,66 +453,22 @@ brms.datmod <- brms.datmod %>% group_by(X1) %>%
 #   print(tmp.plot)
 # }
 # dev.off()
+
 brms.datmod <- merge(brms.datmod, caps.data, by.x="subject", by.y="FAMILY")
+
 initial.brm <- brm(stayLength ~ (currentState+nextState+wave+statePrev+timePrev+CDI_PDI_dose)^3+(1|subject), data = brms.datmod, family=weibull(),iter = 1200, warmup = 400, cores = 4, chains = 4, thin = 50, control = list(max_treedepth=12, adapt_delta=.9))
+## Now plot this model
+initial.brm <- readRDS("~/Desktop/testingBRMS.RDS")
 
-#conditional_effects(initial.brm)
-#initial.indiv.brm <- brm(stayLength ~ -1+currentState*nextState+(-1 + currentState * nextState |subject), data = brms.datmod, family=weibull(),iter = 2000, warmup = 500, cores = 3, chains = 3)
+plot.dat <- brms.datmod %>% filter(!is.na(CDI_PDI_dose)) %>% 
+  filter(!is.na(statePrev))
+plot.dat$predVals <- predict(initial.brm)[,1]
+## Now pllot these estimates
+summarySE(data = plot.dat, measurevar = "predVals", groupvars = c("currentState", "nextState", "wave", "statePrev", "CDI_PDI_dose"))
+## Lets try to plot these somehow w/o summarySE
+ggplot(plot.dat, aes(x=CDI_PDI_dose, y=predVals, group=statePrev, color=statePrev)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  facet_wrap(nextState ~ .) +
+  coord_cartesian(ylim=c(0, 60))
 
-# ## Plot the inital estimates
-# initial.brm %>% spread_draws(
-#   b_Intercept,
-#   b_transType12,
-#   b_transType13,
-#   b_transType14,
-#   b_transType21,
-#   b_transType22,
-#   b_transType23,
-#   b_transType24,
-#   b_transType31,
-#   b_transType32,
-#   b_transType33,
-#   b_transType34,
-#   b_transType41,
-#   b_transType42,
-#   b_transType43,
-#   b_transType44,
-#   ) %>% 
-#   mutate (w0= b_Intercept) %>%
-#   mutate (w1= b_Intercept + b_transType12) %>%
-#   mutate (w2= b_Intercept + b_transType13) %>%
-#   mutate (w3= b_Intercept + b_transType14) %>%
-#   mutate (w4= b_Intercept + b_transType21) %>%
-#   mutate (w5= b_Intercept + b_transType22) %>%
-#   mutate (w6= b_Intercept + b_transType23) %>%
-#   mutate (w7= b_Intercept + b_transType24) %>%
-#   mutate (w8= b_Intercept + b_transType31) %>%
-#   mutate (w9= b_Intercept + b_transType32) %>%
-#   mutate (w10= b_Intercept + b_transType33) %>%
-#   mutate (w11= b_Intercept + b_transType34) %>%
-#   mutate (w12= b_Intercept + b_transType41) %>%
-#   mutate (w13= b_Intercept + b_transType42) %>%
-#   mutate (w14= b_Intercept + b_transType43) %>%
-#   mutate (w15= b_Intercept + b_transType44) %>% 
-#   select (.chain:.draw, w0:w15) %>%
-#   gather ('tt', 'stay', 4:19) %>% 
-# mutate (tt= fct_relevel (tt,'w0','w1', 'w2', 'w3', 'w4', 'w5','w6','w7','w8','w9','w10','w11','w12','w13','w14','w15')) %>%
-#   group_by (tt) %>%
-#   ggplot (aes (y= stay, x= tt)) +
-#   ylab ('Estimated stay duration [sec]') +
-#   xlab ('Transitions') +
-#   stat_interval (.width= c (.5, .75, .95, .99)) +
-#   scale_color_brewer () +
-#   stat_summary (fun= median, geom= 'point', shape= 20, size= 2, color= 'darkblue', fill= 'darkblue')
-# 
-#   
-# withhistory.brm <- brm(stayLength ~ transType*statePrev*timePrev*wave + (1 | subject), data = brms.dat, family=weibull())
-## Now declare an individuality model
-indiv.model <- brm(stayLength ~ -1 + (transType+statePrev+timePrev+wave+childBehavior)^3 + (1 | subject), data = brms.datmod, family=weibull(),iter = 5000, warmup = 1000, cores = 5, control = list(max_treedepth=13, adapt_delta=.9))
-
-saveRDS(indiv.model, "~/Documents/oregonDPICS/data/outBRMSModFive.RDS")
-
-## Now explore a model including the children's behavbiors
-indiv.model.Child <- brm(stayLength ~ -1 + (transType*statePrev*timePrev*wave*childBehavior) + (-1 + transType | subject), data = brms.datmod, family=weibull(),iter = 5000, warmup = 1000, cores = 5)
-saveRDS(indiv.model, "~/Documents/oregonDPICS/data/outBRMSModChild.RDS")
-conditional_effects(indiv.model.Child)

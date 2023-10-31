@@ -467,6 +467,8 @@ q()
 initial.brm <- readRDS("~/Documents/oregonDPICS/data/outBRMSModInit.RDS")
 initial.brm <- readRDS("~/Downloads/outBRMSModInit23.RDS")
 shinystan::launch_shinystan(initial.brm)
+
+
 library(tidybayes)
 ## Plot the initial estimates
 initial.brm %>% spread_draws(

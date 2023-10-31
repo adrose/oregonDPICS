@@ -361,11 +361,6 @@ plot.dat <- melt(state.time, id.vars = c("id","block","wave", "part")) %>%
   mutate(value = as.numeric(value)) %>% 
   mutate(outlier = ifelse(findoutlier(value), part, NA))
 
-p1 <- ggplot(plot.dat, aes(x=variable, y=value)) +
-  geom_boxplot() +
-  ggrepel::geom_label_repel(aes(label=outlier), na.rm=TRUE) +
-  ggtitle("Time in state") +
-  facet_grid(. ~ wave)
 ## Now save these times to disk
 state.time$wave <- paste("Wave_", state.time$wave, sep='')
 state.time$block <- paste("Block_", state.time$block, sep='')
@@ -577,7 +572,7 @@ mod <- lmerTest::lmer(value ~ (trans.pat + Block + Wave)^3 + (1|Part), data = al
 p1 <- visreg(mod, "trans.pat", "Block", cond = list(Wave="1"), gg=TRUE) + ggtitle("Wave 1") + coord_cartesian(ylim=c(-10, 90))
 p2 <- visreg(mod, "trans.pat", "Block", cond = list(Wave="3"), gg=TRUE) + ggtitle("Wave 3") + coord_cartesian(ylim=c(-10, 90))
 multiplot(p1, p2, cols = 1)
-## Looks like GLKMER is not working so I will trnaisiton to BRMS here
+## Looks like GLMER is not working so I will transition to BRMS here
 ## Now do a poisson
 #mod <- lme4::glmer(value ~ (trans.pat + Block + Wave)^3 + (1|Subj), data = all.trans.counts, family = "poisson")
   
@@ -585,14 +580,19 @@ multiplot(p1, p2, cols = 1)
 all.trans.countsCAPS <- merge(all.trans.counts, caps.data, by.x=c("Subj"), by.y="FAMILY")
 #mod <- lmerTest::lmer(value ~ (trans.pat + Block + Wave + Group)^4 + (1|Part), data = all.trans.countsCAPS)
 #mod <- lme4::glmer(value ~ (trans.pat + Block + Wave + Group)^4 + (1|Subj), data = all.trans.counts, family = "poisson")
-modP <- brms::brm(value ~ (trans.pat + Block + Wave + Group)^4 + (1|Subj), data = all.trans.countsCAPS, family = "poisson",iter = 20000, warmup = 10000, cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
-
-## Now do the visreg
-p1 <- visreg(mod, "trans.pat","Wave",overlay=TRUE, cond = list(Group="Control", Block=1), gg=TRUE) + ggtitle("Control") + coord_cartesian(ylim=c(-1, 25))
-p1$layers[[17]] <- NULL
-p3 <- visreg(mod, "trans.pat","Wave",overlay=TRUE, cond = list(Group="Intervention", Block=1), gg=TRUE) + ggtitle("Intervention") + coord_cartesian(ylim=c(-1, 25))
-p3$layers[[17]] <- NULL
-multiplot(p1, p3, cols = 2)
+modP <- brms::brm(value ~ (trans.pat + Block + Wave + Group)^4 + (1|Subj), data = all.trans.countsCAPS, family = "poisson",iter = 9000, warmup = 3000, thin = 50,cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
+saveRDS(modP, file="~/Documents/oregonDPICS/data/possionfourWay.RDS")
+modP2 <- brms::brm(value ~ (trans.pat + Block + Wave + PDINUM)^4 + (1|Subj), data = all.trans.countsCAPS, family = "poisson",iter = 3000, warmup = 1000, thin = 25,cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
+saveRDS(modP2, file="~/Documents/oregonDPICS/data/possionfourWayPDI.RDS")
+modP <- readRDS("~/Documents/oregonDPICS/data/possionfourWay.RDS")
+plot.dat <- all.trans.countsCAPS %>% 
+  filter(!is.na(Group))
+plot.dat$fitted <- predict(modP)[,1]
+## Now plot these effects'
+plot.vals <- summarySE(data = plot.dat, measurevar = "fitted", groupvars = c("trans.pat", "Block", "Wave", "Group"))
+plot.vals %>% ggplot(., aes(x=trans.pat, y=fitted, group=Block, color=Block, fill=Block)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(Wave ~ Group)
 
 ## Now look into block differences
 p11 <- visreg(mod, "trans.pat","Wave",overlay=TRUE, cond = list(Group="Control", Block=1), gg=TRUE) + ggtitle("Control:1") + coord_cartesian(ylim=c(-1, 30))
