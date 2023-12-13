@@ -130,7 +130,7 @@ all.wide.clup$state[state4index] <- 4
 all.wide.clup <- all.wide.clup[!is.na(all.wide.clup$state),]
 ## Now go through and add the disengaged state 5 variable
 id.rep <- unique(all.wide.clup$Observation)
-unengage.time <- 7
+unengage.time <- 15
 insertRow <- function(existingDF, newrow, r) {
   existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
   existingDF[r,] <- newrow
@@ -420,17 +420,105 @@ for(i in unique(out.states.UN$Observation)){
   tmp.dat <- cbind(tmp.dat, tmp.mat.time.diff2B)
   tmp.dat <- cbind(tmp.dat, out.com.vals)
   out.logit <- rbind(out.logit, tmp.dat)
-}  
+} 
+
+## Now go through and create a running tally for time spent in a silent state
+## I will have to identify any states == 5
+## This is going to be expensive, I think
+## How I am going to do this is create a tally for every state
+## and I will increase this count for every state based on the time the action is performed, until the next count
+## need to make sure I figure out a good method for the final action taken
+out.logit2 <- NULL
+for(i in unique(out.logit$Observation)){
+  print(i)
+  ## Isolate data
+  tmp.dat <- out.logit[which(out.logit$Observation==i),]
+  ## Prep the new column titles
+  new.data <- data.frame(timeState1=rep(0, nrow(tmp.dat)), timeState2=rep(0, nrow(tmp.dat)), timeState3=rep(0, nrow(tmp.dat)), 
+                         timeState4=rep(0, nrow(tmp.dat)), timeState5=rep(0, nrow(tmp.dat)))
+  ## Now identify the time spent in each state up across every row within an individual
+  for(l in 1:nrow(tmp.dat)){
+    enter.val <- tmp.dat[l,"Time_Relative_sf"]
+    enter.state <- tmp.dat[l,"state"]
+    if(l<nrow(tmp.dat)){
+      exit.row <- l + 1
+      exit.val <- tmp.dat[exit.row,"Time_Relative_sf"]
+    }
+    if(l==nrow(tmp.dat)){
+      exit.val <- 300
+    }
+    ## Now find the correct state column name and add this to the new.data df
+    add.col <- paste("timeState", enter.state, sep="")
+    add.val <- exit.val - enter.val
+    ## now put this number into the corresponding row in the new.data variable
+    new.data[l,add.col] <- add.val
+  }
+  for(z in 1:ncol(new.data)){
+    new.data[,z] <- cumsum(new.data[,z])
+  }
+  ## Add this to out.logit
+  tmp.dat <- bind_cols(tmp.dat, new.data)
+  out.logit2 <- bind_rows(out.logit2, tmp.dat)
+}
+
+## Now repeat this process but run the timer within each command
+out.logit3 <- NULL
+for(i in unique(out.logit$Observation)){
+  print(i)
+  ## Isolate data
+  tmp.dat2 <- out.logit2[which(out.logit2$Observation==i),]
+  ## Now idenitfy all coammand counts within these data
+  total.command <- max(tmp.dat2$commandCount)
+  new.data.out <- NULL
+  for(j in 1:total.command){
+    ## Isolate the command specific counts
+    tmp.dat <- tmp.dat2[which(tmp.dat2$commandCount==j),]
+    ## Prep the new column titles
+    new.data <- data.frame(timeState1=rep(0, nrow(tmp.dat)), timeState2=rep(0, nrow(tmp.dat)), timeState3=rep(0, nrow(tmp.dat)), 
+                           timeState4=rep(0, nrow(tmp.dat)), timeState5=rep(0, nrow(tmp.dat)))
+    ## Now identify the time spent in each state up across every row within an individual
+    for(l in 1:nrow(tmp.dat)){
+      enter.val <- tmp.dat[l,"Time_Relative_sf"]
+      enter.state <- tmp.dat[l,"state"]
+      if(l<nrow(tmp.dat)){
+        exit.row <- l + 1
+        exit.val <- tmp.dat[exit.row,"Time_Relative_sf"]
+      }
+      if(l==nrow(tmp.dat2)){
+        exit.val <- 300
+      }
+      ## Now find the correct state column name and add this to the new.data df
+      add.col <- paste("timeState", enter.state, sep="")
+      add.val <- exit.val - enter.val
+      ## now put this number into the corresponding row in the new.data variable
+      new.data[l,add.col] <- add.val
+      ## Now calc the cumsum for each column, this details the amount of time spent in each state
+      ## across the entire task
+    }
+    for(z in 1:ncol(new.data)){
+      new.data[,z] <- cumsum(new.data[,z])
+    }
+    new.data.out <- bind_rows(new.data.out, new.data)
+    ## Add this to out.logit
+  }
+  ## Fix the column names
+  colnames(new.data.out) <- paste(colnames(new.data.out), "_ComSpec", sep='')
+  tmp.dat2 <- bind_cols(tmp.dat2, new.data.out)
+  out.logit3 <- bind_rows(out.logit3, tmp.dat2)
+}
+
 ## Now isolate all command rows
-logit.dat <- out.logit[which(out.logit$state==4),]
+logit.dat <- out.logit3[which(out.logit3$state==4),]
 logit.dat$wave <- factor(logit.dat$wave)
 
 ## Now add a direct versus indirect command indicator
 logit.dat$directCommand <- TRUE
 logit.dat$directCommand[logit.dat$Indirect_Command==1] <- FALSE
 ## Plot some of these relationshiphs
-GGally::ggpairs(logit.dat[,c(58,60,62:68, 36)])
-GGally::ggpairs(logit.dat[,c(69:79,41)])
+# GGally::ggpairs(logit.dat[,c(58,60,62:68, 36)])
+# GGally::ggpairs(logit.dat[,c(69:79,41)])
+# GGally::ggpairs(logit.dat[,c(37,38,39,41)])
+
 
 ## Now merge caps data
 logit.dat <- merge(logit.dat, caps.data, by.x="participant", by.y="FAMILY")
@@ -438,20 +526,100 @@ logit.dat <- merge(logit.dat, caps.data, by.x="participant", by.y="FAMILY")
 logit.dat$CDI_PDI_dose[logit.dat$wave==1] <- "CDI0_PDI0"
 logit.dat$CDINUM[logit.dat$wave==1] <- 0
 logit.dat$PDINUM[logit.dat$wave==1] <- 0
+## Now fix some of the wave 3 control group with CDI num and PDI num == 0 
+logit.dat$CDINUM[which(logit.dat$Group=="Control" & is.na(logit.dat$CDINUM) & logit.dat$wave==3)] <- 0
+logit.dat$PDINUM[which(logit.dat$Group=="Control" & is.na(logit.dat$PDINUM) & logit.dat$wave==3)] <- 0
+
+#logit.dat <- logit.dat[which(logit.dat$PBEIT11 <= 60),]
 comply.glmer <- lme4::glmer(Comply ~ Group*wave + (1|participant), data=logit.dat, family = binomial)
+rm.index <- names(which(table(logit.dat$participant, logit.dat$wave)[,2]==0))
+logit.dat.tmp <- logit.dat[which(!logit.dat$participant %in% rm.index),]
+comply.glmer <- lme4::glmer(Comply ~ wave*Group + (1|participant), data=logit.dat.tmp, family = binomial)
 
 ## Now look for growth in actions per intermission based on group & CDI&PDI num
-tmp.dat <- logit.dat[,c("participant", "state1CumSumTotal", "state2CumSumTotal", "state3CumSumTotal", "state5CumSumTotal", "CDINUM", "PDINUM")]
+tmp.dat <- logit.dat[,c("participant", "state1CumSumTotal", "state2CumSumTotal", "state3CumSumTotal","state4CumSumTotal" ,"state5CumSumTotal", "CDINUM", "PDINUM", "CDI_PDI_dose", "wave", "Group")]
 ## Now melt these
-tmp.dat <- reshape2::melt(tmp.dat, id.vars = c("participant", "CDINUM", "PDINUM"))
-glmer.Count <- lme4::glmer(value ~ (variable+PDINUM+CDINUM)^3+(1|participant), data=tmp.dat, family=poisson)
+tmp.dat <- reshape2::melt(tmp.dat, id.vars = c("participant", "CDINUM", "PDINUM", "CDI_PDI_dose", "wave", "Group"))
+
+#tmp.dat <- tmp.dat[-which(tmp.dat$CDINUM==0),]
+# glmer.Count <- lme4::glmer(value ~ (variable+CDI_PDI_dose)^2+(1|participant), data=tmp.dat, family=poisson)
+# glmer.Count <- lme4::glmer(value ~ (wave+Group+variable)^3+(1|participant), data=tmp.dat, family=poisson)
+## Now find the max wihtin each subject
+tmp.dat <- tmp.dat %>% group_by(participant, wave, variable, CDINUM, PDINUM,Group, CDI_PDI_dose) %>% 
+  summarize(max.pt = max(value)) %>% 
+  distinct()
+
+glmer.Count <- lme4::glmer(max.pt ~ (variable+Group+wave)^3+(1|participant), data=tmp.dat, family=poisson)
+# visreg(glmer.Count, "wave","Group", cond = list(variable="state1CumSumTotal"), overlay=TRUE)
+# visreg(glmer.Count, "wave","Group", cond = list(variable="state2CumSumTotal"), overlay=TRUE)
+# visreg(glmer.Count, "wave","Group", cond = list(variable="state3CumSumTotal"), overlay=TRUE)
+# visreg(glmer.Count, "wave","Group", cond = list(variable="state4CumSumTotal"), overlay=TRUE)
+# visreg(glmer.Count, "wave","Group", cond = list(variable="state5CumSumTotal"), overlay=TRUE)
+glmer.Count <- lme4::glmer(max.pt ~ (variable+CDI_PDI_dose)^2+(1|participant), data=tmp.dat, family=poisson)
+
 
 ## Now run our glmer model here
 # comply.glmer <- lme4::glmer(Comply ~ state1CumSum + state2CumSum + state3CumSum + state5CumSum + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
 # comply.glmer <- lme4::glmer(Comply ~ (state1CumSum + state2CumSum + state3CumSum + state5CumSum)^2+PCITENGAGE*wave+directCommand + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
 # comply.glmer <- lme4::glmer(Comply ~ (actionTime1 + actionTime2 + actionTime3 + actionTime5+directCommand)^2 + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
 # comply.glmer <- lme4::glmer(Comply ~ state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal + state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
-# comply.glmer <- lme4::glmer(Comply ~ state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+# visreg(comply.glmer, "state1CumSumTotal")
+# visreg(comply.glmer, "state2CumSumTotal")
+# visreg(comply.glmer, "state5CumSumTotal")
+# visreg(comply.glmer, "state1CumSumTotal", "timeFromLastState_1")
+# visreg(comply.glmer, "state3CumSumTotal", "timeFromLastState_3")
+# visreg(comply.glmer, "state5CumSumTotal", "timeFromLastState_5")
+comply.glmer <- lme4::glmer(Comply ~ state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+                              state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + 
+                              directCommand + state1CumSum*state5CumSumTotal + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+
+## Plot sig effects here 
+## Starting with the Main Effects
+# visreg(comply.glmer, "state1CumSumTotal")
+# visreg(comply.glmer, "state2CumSumTotal")
+# visreg(comply.glmer, "state5CumSumTotal")
+# visreg(comply.glmer, "state1CumSum")
+# visreg(comply.glmer, "state3CumSum")
+# visreg(comply.glmer, "state5CumSum")
+# visreg(comply.glmer, "directCommand")
+# visreg(comply.glmer, "state3CumSumTotal", "timeFromLastState_3")
+# visreg(comply.glmer, "state5CumSumTotal", "timeFromLastState_5")
+# visreg(comply.glmer, "state1CumSum", "state5CumSumTotal")
+
+## Now explore action interactions
+comply.glmer2 <- lme4::glmer(Comply ~ (state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum)^2 + 
+                              state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + 
+                              directCommand + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmer2A <- lme4::glmer(Comply ~ (state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum)^2 + 
+                               state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + 
+                               directCommand + (state1CumSumTotal +state5CumSumTotal|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+
+
+## I want to overcomplicate this model down here
+comply.glmerX <- lme4::glmer(Comply ~  directCommand + (1 |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerY <- lme4::glmer(Comply ~  directCommand + (state5CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerY1 <- lme4::glmer(Comply ~  directCommand + (state2CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerYA <- lme4::glmer(Comply ~  directCommand + (state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state4CumSumTotal+state5CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerYA <- lme4::glmer(Comply ~  directCommand + state1CumSumTotal+state4CumSumTotal+state5CumSumTotal+ (state1CumSumTotal+state4CumSumTotal+state5CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerYB <- lme4::glmer(Comply ~  directCommand + state1CumSumTotal+state5CumSumTotal+ (state1CumSumTotal+state5CumSumTotal + directCommand |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerZ <- lme4::glmer(Comply ~  directCommand + (state1CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerZ1 <- lme4::glmer(Comply ~  directCommand + (state1CumSumTotal +state5CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerYC <- lme4::glmer(Comply ~  directCommand + (directCommand |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerYD <- lme4::glmer(Comply ~  state1CumSumTotal + (state1CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+pairs(ranef(comply.glmerY)$participant)
+pairs(ranef(comply.glmerY1)$participant)
+pairs(ranef(comply.glmerYA)$participant)
+pairs(ranef(comply.glmerYC)$participant)
+GGally::ggpairs(ranef(comply.glmerYA)$participant)
+GGally::ggpairs(ranef(comply.glmerYB)$participant)
+GGally::ggpairs(ranef(comply.glmerYC)$participant)
+pairs(ranef(comply.glmerZ)$participant)
+pairs(ranef(comply.glmerZ1)$participant)
+comply.glmerZ1 <- lme4::glmer(Comply ~  directCommand + state1CumSumTotal + state5CumSumTotal + (state1CumSumTotal +state5CumSumTotal |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+comply.glmerYA <- lme4::glmer(Comply ~  state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state4CumSumTotal+state5CumSumTotal + directCommand +(state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state4CumSumTotal+state5CumSumTotal + directCommand |participant), data=logit.dat, family = binomial) ## isn't exactly behaving
+GGally::ggpairs(ranef(comply.glmerYA)$participant)
+
+
 # comply.glmer <- lme4::glmer(Comply ~  state5CumSumTotal*  state5CumSum +  state5CumSumTotal:timeFromLastState_5 + (1|participant), data=logit.dat, family = binomial) ## isn't exactly behaving
 ## Now look into specific behaviors here
 comply.glmer1 <- glmer(Comply ~ (comSpecific_Behavior_Description + comSpecific_Direct_Command_NO + 
@@ -464,6 +632,13 @@ comply.glmer3 <- glmer(Comply ~ (nonSpecific_Behavior_Description + nonSpecific_
                                    nonSpecific_Reflection + nonSpecific_Unlabeled_Praise + state5CumSum) + (comSpecific_Behavior_Description + comSpecific_Direct_Command_NO + 
                                                                                                comSpecific_Indirect_Command_NO + comSpecific_Labeled_Praise + comSpecific_Negative_Talk + comSpecific_Neutral_Talk + comSpecific_Question +
                                                                                                comSpecific_Reflection + comSpecific_Unlabeled_Praise + state5CumSumTotal) + (1|participant), data = logit.dat,family = binomial)
+comply.glmer3A <- glmer(Comply ~ (nonSpecific_Behavior_Description + nonSpecific_Direct_Command_NO + nonSpecific_Indirect_Command_NO + nonSpecific_Labeled_Praise + 
+                                   nonSpecific_Negative_Talk + nonSpecific_Neutral_Talk + nonSpecific_Question +
+                                   nonSpecific_Reflection + nonSpecific_Unlabeled_Praise + state5CumSum) + (comSpecific_Behavior_Description + comSpecific_Direct_Command_NO + 
+                                                                                                              comSpecific_Indirect_Command_NO + comSpecific_Labeled_Praise + comSpecific_Negative_Talk + comSpecific_Neutral_Talk + comSpecific_Question +
+                                                                                                              comSpecific_Reflection + comSpecific_Unlabeled_Praise + state5CumSumTotal) + (state1CumSumTotal+state4CumSumTotal+state5CumSumTotal|participant), data = logit.dat,family = binomial)
+
+
 ## Now try one with the time from interaction
 comply.glmer4 <- glmer(Comply ~    nonSpecific_Behavior_Description + nonSpecific_Behavior_Description:timeFromLast_Behavior_Description +
                                    nonSpecific_Direct_Command_NO +    nonSpecific_Direct_Command_NO:timeFromLast_Direct_Command_NO +
@@ -475,7 +650,6 @@ comply.glmer4 <- glmer(Comply ~    nonSpecific_Behavior_Description + nonSpecifi
                                    nonSpecific_Reflection +           nonSpecific_Reflection:timeFromLast_Reflection +
                                    nonSpecific_Unlabeled_Praise + nonSpecific_Unlabeled_Praise:timeFromLast_Unlabeled_Praise +
                                    state5CumSumTotal + state5CumSumTotal:timeFromLastState_5 +
-                         directCommand + 
                                    (1|participant), data = logit.dat,family = binomial)
 
 ## plot some of these effects?
@@ -510,18 +684,208 @@ comply.glmer5 <- glmer(Comply ~ nonSpecific_Behavior_Description +
                          comSpecific_Question + nonSpecific_Question:timeFromLast_Question +
                          comSpecific_Reflection + nonSpecific_Reflection:timeFromLast_Reflection +
                          comSpecific_Unlabeled_Praise + nonSpecific_Unlabeled_Praise:timeFromLast_Unlabeled_Praise +
-                         state5CumSum + state5CumSumTotal:timeFromLastState_5 +
+                         state5CumSum + state5CumSumTotal +state5CumSumTotal:timeFromLastState_5 +
                          (1|participant), data = logit.dat,family = binomial)
 
+visreg(comply.glmer5, "nonSpecific_Behavior_Description")
+visreg(comply.glmer5, "nonSpecific_Indirect_Command_NO")
+visreg(comply.glmer5, "nonSpecific_Neutral_Talk")
+visreg(comply.glmer5, "comSpecific_Unlabeled_Praise")
+visreg(comply.glmer5, "state5CumSum")
+visreg(comply.glmer5, "state5CumSumTotal")
+visreg(comply.glmer5, "nonSpecific_Behavior_Description", "timeFromLast_Behavior_Description")
+visreg(comply.glmer5, "nonSpecific_Neutral_Talk", "timeFromLast_Neutral_Talk")
+visreg(comply.glmer5, "state5CumSumTotal", "timeFromLastState_5")
 
 ## Try a brms model here
 library(brms)
-comply.brms <- brm(formula = Comply ~ -1 + (state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state5CumSumTotal+wave+timePrevCommand+directCommand)^2 + (1|participant), data = logit.dat, family = bernoulli(link="logit"), cores = 4)
-conditional_effects(comply.brms)
-comply.brms2 <- brm(formula = Comply ~ -1 (state1CumSum+state2CumSum+state3CumSum+state5CumSum+wave+timePrevCommand+wave+timePrevCommand+directCommand)^2 + (1|participant), data = logit.dat, family = bernoulli(link="logit"), cores = 4)
-conditional_effects(comply.brms2)
-comply.brms3 <- brm(formula = Comply ~ (timeFromLastState_1 + timeFromLastState_2 + timeFromLastState_3 + timeFromLastState_5+PCITENGAGE+wave+directCommand)^2 + (1|participant), data = logit.dat, family = bernoulli(link="logit"),iter = 6000, warmup = 2000,cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
-comply.brms <- brm(formula = Comply ~ (state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state5CumSumTotal+CDI_PDI_dose+timePrevCommand+directCommand)^2 + (1|participant), data = logit.dat, family = bernoulli(link="logit"),iter = 6000, warmup = 2000,cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
-conditional_effects(comply.brms)
-comply.brms2 <- brm(formula = Comply ~(state1CumSum+state2CumSum+state3CumSum+state5CumSum+timePrevCommand+CDI_PDI_dose+timePrevCommand+directCommand)^2 + (1|participant), data = logit.dat, family = bernoulli(link="logit"),iter = 6000, warmup = 2000,cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
-conditional_effects(comply.brms2)
+# comply.glmer.brm <- brm(Comply ~ state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + 
+#                           state3CumSum + state5CumSum + state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + 
+#                           state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + directCommand + (1|participant), data=logit.dat,                    
+#                         family = bernoulli(link = "logit"),
+#                         warmup = 1000, 
+#                         iter = 2500, 
+#                         chains = 4, 
+#                         cores=4,
+#                         seed = 123)
+# comply.glmer.brmZ <- brm(Comply ~  state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state4CumSumTotal +state5CumSumTotal +directCommand + 
+#                         (state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state4CumSumTotal +state5CumSumTotal +directCommand|participant), 
+#                          data=logit.dat,family = bernoulli(link = "logit"),
+#                         warmup = 2000, 
+#                         iter = 5000,
+#                         thin = 5,
+#                         chains = 6, 
+#                         cores = 6,
+#                         seed = 123)
+#shinystan::launch_shinystan(comply.glmer.brmZ) ## All convergence criteria looked really good!
+# vals <- ranef(comply.glmer.brmZ)
+# vals <- vals[[1]]
+# intercept <- vals[,,1]
+# state1Slope <- vals[,,2]
+# state2Slope <- vals[,,3]
+# state3Slope <- vals[,,4]
+# state4Slope <- vals[,,5]
+# state5Slope <- vals[,,6]
+# dcSlope <- vals[,,7]
+# all.dat <- data.frame(intercept = intercept[,"Estimate"], state1Slope = state1Slope[,"Estimate"], 
+#                       state2Slope = state2Slope[,"Estimate"], state3Slope = state3Slope[,"Estimate"], 
+#                       state4Slope = state4Slope[,"Estimate"], state5Slope = state5Slope[,"Estimate"],
+#                       dcSlope = dcSlope[,"Estimate"])
+# GGally::ggpairs(all.dat)
+## In my opinion this suggests we keep all of the state specific slopes....
+comply.glmer.brmZ2 <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+                           state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+                           directCommand + (state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state5CumSumTotal +directCommand|participant), 
+                         data=logit.dat,family = bernoulli(link = "logit"),
+                         warmup = 2000,
+                         thin=5,
+                         iter = 5000,
+                         chains = 5, 
+                         cores = 5,
+                         seed = 123)
+## Now scale these variables
+vals <- ranef(comply.glmer.brmZ2)
+vals <- vals[[1]]
+intercept <- vals[,,1]
+state1Slope <- vals[,,2]
+state2Slope <- vals[,,3]
+state3Slope <- vals[,,4]
+state5Slope <- vals[,,5]
+dcSlope <- vals[,,6]
+all.dat <- data.frame(intercept = intercept[,"Estimate"], state1Slope = state1Slope[,"Estimate"],
+                      state2Slope = state2Slope[,"Estimate"], state3Slope = state3Slope[,"Estimate"],
+                      state5Slope = state5Slope[,"Estimate"],
+                      dcSlope = dcSlope[,"Estimate"])
+GGally::ggpairs(all.dat)
+
+logit.dat.scale <- logit.dat
+## Now scale the time variables
+## I think I need to scale the time varaibles from 0-1
+## 0 being 0 seconds and 1 being 300 seconds
+## Maybe do 0 --> 1 for all vars?
+col.vals <- c("state1CumSumTotal","state2CumSumTotal","state3CumSumTotal","state4CumSumTotal","state5CumSumTotal",
+              "state1CumSum","state2CumSum","state3CumSum","state5CumSum",
+              "timeFromLastState_1","timeFromLastState_2","timeFromLastState_3","timeFromLastState_5","timePrevCommand")
+method <- rep(1, length(col.vals))
+for(cv in 1:length(col.vals)){
+  tmp.name <- col.vals[cv]
+  method.tmp <- method[cv]
+  if(method.tmp==1){tmp.vals <- range01(logit.dat.scale[,tmp.name])}
+  if(method.tmp==2){tmp.vals <- scale(logit.dat.scale[,tmp.name])}
+  logit.dat.scale[,tmp.name] <- tmp.vals
+}
+
+## Now see what this does for our interaction terms
+int.1.test <- logit.dat$state1CumSumTotal * logit.dat$timeFromLastState_1
+int.2.test <- logit.dat.scale$state1CumSumTotal * logit.dat.scale$timeFromLastState_1
+plot(int.1.test, int.2.test)
+
+## This should be the final model -- the scaled values are much easier to use!!
+comply.glmer.brmZScale <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal+ state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum +
+                            state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+                            directCommand+(state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state5CumSumTotal+directCommand|participant),
+                          data=logit.dat.scale,family = bernoulli(link = "logit"),
+                          warmup = 2000,
+                          iter = 5000,
+                          thin = 5,
+                          chains = 4,
+                          cores = 4,
+                          seed = 123)
+# comply.glmer.brmZScale <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+#                                 state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+#                                 directCommand + (state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state5CumSumTotal +directCommand|participant), 
+#                               data=logit.dat.scale,family = bernoulli(link = "logit"),
+#                               warmup = 2000, 
+#                               iter = 5000,
+#                               thin = 5,
+#                               chains = 4, 
+#                               cores = 4,
+#                               seed = 123)
+# 
+# ## Now examine using the previous model a wave*group interaction, and also a treatment effect using cdi dose, pdi dose, and also sum of cdi & pdi
+# comply.glmer.brmZ2WG <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state4CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+#                             state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+#                             directCommand + wave*Group +(state1CumSumTotal+state2CumSumTotal+state3CumSumTotal+state4CumSumTotal+state5CumSumTotal+directCommand|participant), 
+#                           data=logit.dat,family = bernoulli(link = "logit"),
+#                           warmup = 2000, 
+#                           iter = 5000,
+#                           thin = 5,
+#                           chains = 4, 
+#                           cores = 4,
+#                           seed = 123)
+# comply.glmer.brmZ2CD <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state4CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+#                               state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+#                               directCommand + CDINUM +(state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state4CumSumTotal +state5CumSumTotal +directCommand|participant), 
+#                             data=logit.dat,family = bernoulli(link = "logit"),
+#                             warmup = 2000, 
+#                             iter = 5000,
+#                             thin = 5,
+#                             chains = 4, 
+#                             cores = 4,
+#                             seed = 123)
+# comply.glmer.brmZ2PD <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state4CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+#                               state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+#                               directCommand + PDINUM +(state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state4CumSumTotal +state5CumSumTotal +directCommand|participant), 
+#                             data=logit.dat,family = bernoulli(link = "logit"),
+#                             warmup = 2000, 
+#                             iter = 5000,
+#                             thin = 5,
+#                             chains = 4, 
+#                             cores = 4,
+#                             seed = 123)
+# logit.dat$totalVisit <- logit.dat$CDINUM + logit.dat$PDINUM
+# comply.glmer.brmZ2TV <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state4CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum + 
+#                               state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+#                               directCommand + totalVisit +(state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state4CumSumTotal +state5CumSumTotal +directCommand|participant), 
+#                             data=logit.dat,family = bernoulli(link = "logit"),
+#                             warmup = 2000, 
+#                             iter = 5000,
+#                             thin = 5,
+#                             chains = 4, 
+#                             cores = 4,
+#                             seed = 123)
+
+## Now examine two-way interactions
+# comply.glmer.brmZScale2 <- brm(Comply~(state1CumSumTotal + state2CumSumTotal + state3CumSumTotal + state5CumSumTotal+ state1CumSum + state2CumSum + state3CumSum + state5CumSum)^2 + 
+#                                 state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + state5CumSumTotal:timeFromLastState_5 + timePrevCommand +
+#                                 directCommand + (state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +state5CumSumTotal +directCommand|participant), 
+#                               data=logit.dat.scale,family = bernoulli(link = "logit"),
+#                               warmup = 3000, 
+#                               iter = 9000,
+#                               thin = 5,
+#                               chains = 4, 
+#                               cores = 4,
+#                               seed = 123)
+
+
+## Find all effects with a non 0 confidence interval
+# state1CumSumTotal
+# state5CumSumTotal
+# state1CumSum
+# directCommandTRUE
+# state2CumSumTotal:state2CumSum
+# state2CumSumTotal:state3CumSum
+# state5CumSumTotal:state3CumSum 
+# state3CumSumTotal:timeFromLastState_3
+# conditional_effects(comply.glmer.brmZScale2, "state1CumSumTotal")
+# conditional_effects(comply.glmer.brmZScale2, "state5CumSumTotal")
+# conditional_effects(comply.glmer.brmZScale2, "state1CumSum")
+# conditional_effects(comply.glmer.brmZScale2, "directCommand")
+# conditional_effects(comply.glmer.brmZScale2, "state2CumSumTotal:state2CumSum")
+# conditional_effects(comply.glmer.brmZScale2, "state2CumSumTotal:state3CumSum")
+# conditional_effects(comply.glmer.brmZScale2, "state2CumSumTotal:state2CumSum")
+# conditional_effects(comply.glmer.brmZScale2, "state5CumSumTotal:state3CumSum")
+# conditional_effects(comply.glmer.brmZScale2, "state3CumSumTotal:timeFromLastState_3")
+
+## Now toy around with the time spent in silence using the new count variables
+## This builds off of the comply.glmer.brmZ2 model syntax
+comply.glmer.brmZ3 <- brm(Comply ~  state1CumSumTotal + state2CumSumTotal + state3CumSumTotal  + timeState5+ state1CumSum + state2CumSum + state3CumSum + timeState5_ComSpec + 
+                            state1CumSumTotal:timeFromLastState_1 + state2CumSumTotal:timeFromLastState_2 + state3CumSumTotal:timeFromLastState_3 + timeState5:timeFromLastState_5 + timePrevCommand +
+                            directCommand + (state1CumSumTotal +state2CumSumTotal +state3CumSumTotal +timeState5 +directCommand|participant), 
+                          data=logit.dat,family = bernoulli(link = "logit"),
+                          warmup = 2000,
+                          thin=2,
+                          iter = 6000,
+                          chains = 5, 
+                          cores = 5,
+                          seed = 123)

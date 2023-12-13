@@ -502,6 +502,10 @@ out.surv.int <- out.surv.int[-which(out.surv.int$currentSesh >= out.surv.int$tim
 Surv(time = out.surv.int$currentSesh, time2 = out.surv.int$timePrevComply, event = out.surv.int$Comply)
 ## Plot these survival curves
 plot(survfit(Surv(time = out.surv.int$currentSesh, time2 = out.surv.int$timePrevComply, event = out.surv.int$Comply)~1))
+fit <- survfit(Surv(time = out.surv.int$currentSesh, time2 = out.surv.int$timePrevComply, event = out.surv.int$Comply)~1)
+plot <- ggsurvplot(fit = fit, data = out.surv.int, ggtheme = theme_bw())
+
+
 ## Now do this with some of the basic covariates
 plot(survfit(Surv(time = out.surv.int$currentSesh, time2 = out.surv.int$timePrevComply, event = out.surv.int$Comply)~out.surv.int$wave))
 
@@ -563,7 +567,7 @@ new.data$wave <- factor(new.data$wave, levels=c(1,3))
 plot.vals <- survfit(coxphmod, newdata = new.data)
 plot(plot.vals, lty = 1:3)
 plot1 <- ggsurvplot(plot.vals, data=out.surv.int.caps, conf.int = TRUE, xlim=c(0,70)) + ggtitle("AllVals")# + coord_cartesian(xlim=c(0,100))
-coxmemod <- coxme(Surv(currentSesh, time2 = timePrevComply, event = Comply) ~ (state1CumSum+state2CumSum+state3CumSum+state4CumSum)^2+CDINUM+complyCount + (1|Part), 
+coxmemod <- coxme(Surv(currentSesh, time2 = timePrevComply, event = Comply) ~ (state1CumSum+state2CumSum+state3CumSum+state4CumSum)^2 + (1|Part), 
                   ties=c("efron"),data = out.surv.int.caps)
 ## Now go through the main effects for each of the parent variables
 new.dataME1 <- data.frame(state1CumSum = c(0,10), state2CumSum=c(0),state3CumSum=c(0),state4CumSum=c(0), CDINUM=c(0), wave=factor(3, levels=c(1,3)), complyCount=c(1))
@@ -587,6 +591,29 @@ plot6 <- ggsurvplot(plot.vals6, data=out.surv.int.caps, conf.int = FALSE, xlim=c
 new.dataME7 <- data.frame(state1CumSum = c(0), state2CumSum=c(0),state3CumSum=c(0),state4CumSum=c(0), CDINUM=c(0,10), wave=factor(c(3), levels=c(1,3)), complyCount=c(1))
 plot.vals7 <- survfit(coxphmod, newdata = new.dataME7)
 plot7 <- ggsurvplot(plot.vals7, data=out.surv.int.caps, conf.int = FALSE, xlim=c(0,100)) + ggtitle("ME_CDI")# + coord_cartesian(xlim=c(0,100))
+
+#png("Positive.png", width = 600, height = 800, units = "px", pointsize = 300)
+png("Positive.png")
+plot1
+dev.off()
+png("Neutral.png")#  width = 400, height = 300, units = "px", pointsize = 300)
+plot2
+dev.off()
+png("Dont.png")#,     width = 400, height = 300, units = "px", pointsize = 300)
+plot3
+dev.off()
+png("Disengage.png")#,width = 400, height = 300, units = "px", pointsize = 300)
+plot4
+dev.off()
+
+## Now create a histogram for the random effect
+tmp.dat <- data.frame(ranef(coxmemod)$Part)
+ggplot(tmp.dat, aes(x=ranef.coxmemod..Part)) +
+  geom_histogram() +
+  theme_bw() +
+  ylab("") +
+  xlab("Participant Specific Intercept") +
+  theme(text=element_text(size=20))
 
 ## Interactions down here
 new.dataME7 <- data.frame(state1CumSum = c(0,10,10,0), state2CumSum=c(0,0,10,10),state3CumSum=c(0),state4CumSum=c(0), CDINUM=c(0,10), wave=factor(c(3), levels=c(1,3)), complyCount=c(1))
