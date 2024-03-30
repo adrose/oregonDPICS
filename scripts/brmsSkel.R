@@ -215,7 +215,7 @@ out.states$Block <- as.numeric(factor(out.states$X2, levels=c("CLED", "PLED", "C
 ## Now add the disengaged state here
 id.rep <- unique(out.states$X1)
 block.rep <- 1:3
-unengage.time <- 7
+unengage.time <- 700
 insertRow <- function(existingDF, newrow, r) {
   existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
   existingDF[r,] <- newrow
@@ -266,10 +266,17 @@ mod.dat$X3[mod.dat$X2=="PLED"] <- mod.dat$X3[mod.dat$X2=="PLED"] + 300
 mod.dat$X3[mod.dat$X2=="CLUP"] <- mod.dat$X3[mod.dat$X2=="CLUP"] + 600
 
 ## Plot a single partiicpant's time series
-mod.dat[which(mod.dat$X1=="CAPS111_1"),] %>% ggplot(., aes(x=X3, y=X4)) +
+mod.dat[which(mod.dat$X1=="CAPS111_1"),] %>% filter(X4 %in% c(1,2,3)) %>% 
+  ggplot(., aes(x=X3, y=factor(X4))) +
   #geom_line() +
-  geom_point() + 
-  facet_grid(. ~ Block, scales = "free")
+  annotate(geom="rect", xmin=0, xmax=300, ymin=-Inf, ymax=Inf, fill="grey", alpha = .5) +
+  annotate(geom="rect", xmin=0, xmax=600, ymin=-Inf, ymax=Inf, fill="grey", alpha = .5) +
+  annotate(geom="rect", xmin=0, xmax=900, ymin=-Inf, ymax=Inf, fill="grey", alpha = .5) +
+  geom_point() +
+  xlab("Time (seconds)")+
+  ylab("State") +
+  theme_bw()
+  #facet_grid(. ~ Block, scales = "free")
 
 ## Now estimate time spent in each state
 state.time <- NULL
@@ -443,27 +450,35 @@ ggplot(test, aes(x=stayLength, y=countVar, color=currentState, fill=currentState
   geom_point() +
   facet_grid(currentState~.)
 
-## Now go through all data and create each of these within every individual
-pdf("allIntCLUP.pdf")
-for(z in unique(brms.datAll$V1)){
-  tmp.plot <- ggplot(test[which(test$V1==z & test$Block==3),], aes(y=stayLength, x=countVar, color=currentState, fill=currentState)) +
-    geom_point() +
-    ylab("Stay Length (seconds)") +
-    xlab("Interaction count") +
-    ggtitle(paste(z, "CLUP Task Interactions")) +
-    theme_bw()
-  print(tmp.plot)
+## Remove any NA group values
+brms.datmod2 <- brms.datmod[complete.cases(brms.datmod$Group),]
+## Remove dyads with very infrequent actions -- starting at more than 30 verbal interactions
+for(i in unique(brms.datmod2$V1)){
+  iso.vals <- which(brms.datmod2$V1==i)
+  if(length(iso.vals) < 40){
+    print(i)
+  brms.datmod2 <- brms.datmod2[-iso.vals,]  
+  }
 }
-dev.off()
 
-priors <- get_prior(stayLength ~ -1 + (transType+statePrev+timePrev+wave+childBehavior+CDINUM+PDINUM)+(-1 + transType|subject), data = brms.datmod, family=weibull())
-#priors$prior[1:19] <- "normal(30, 30)"
-#priors$lb[1:18] <- "-10"
-#priors$ub[1:18] <- "20"
-initial.brm <- brm(stayLength ~ (transType+statePrev+timePrev+wave+childBehavior)^5+(1|subject), data = brms.datmod, family=weibull(),iter = 20000, warmup = 10000, cores = 5, chains = 5,seed=16, control = list(max_treedepth=15, adapt_delta=.9))
-saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/outBRMSModInit23.RDS")
+priors <- get_prior(stayLength ~ (transType+wave+childBehavior+Group)^3+(1|subject), data = brms.datmod2, family=weibull())
+## Check first iteration model
+#iter.one <- readRDS("./Documents/oregonDPICS/data/outBRMSModInit23.RDS")
+
+## Constrain priors
+## Start with transition types
+priors$prior[1:92] <- "normal(1,2)"
+
+## Constrain mixed effect variance
+priors[96,] <- set_prior("constant(.4)", class = "sd", coef = "Intercept", group = "subject")
+priors[97,] <- set_prior("constant(1.2)", class = "shape")
+
+initial.brm <- brm(stayLength ~ (transType+wave+childBehavior+Group)^3+(1|subject), data = brms.datmod, 
+                   family=weibull(),iter = 30000, warmup = 10000, cores = 5, chains = 5,seed=16, 
+                   control = list(max_treedepth=15, adapt_delta=.99)prior = priors)
+
+saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/outBRMSModInit23Prior.RDS")
 q()
-
 initial.brm <- readRDS("~/Documents/oregonDPICS/data/outBRMSModInit.RDS")
 initial.brm <- readRDS("~/Downloads/outBRMSModInit23.RDS")
 shinystan::launch_shinystan(initial.brm)
