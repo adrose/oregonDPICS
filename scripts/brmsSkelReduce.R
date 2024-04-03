@@ -464,9 +464,33 @@ for(i in unique(brms.datmod2$V1)){
 brms.datmod2$Comply <- FALSE
 brms.datmod2$Comply[brms.datmod2$childBehavior=="Comply"] <- TRUE
 
-priors <- get_prior(stayLength ~ (transType+wave+Comply+Group)^3+(1|subject), data = brms.datmod2, family=weibull())
-priors$prior[1:64] <- "normal(0, 5)"
+factorRep <- model.matrix( ~ -1 + transType, data = brms.datmod2)
+factorRep <- data.frame(factorRep)
+colnames(factorRep)
+brms.datmod2 <- bind_cols(brms.datmod2, factorRep)
 
-initial.brm <- brm(stayLength ~ (transType+wave+Comply+Group)^3+(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 6000, warmup = 2000, cores = 3, chains = 3,seed=16, 
-                   control = list(max_treedepth=15, adapt_delta=.99),prior = priors)
+priors <- get_prior(stayLength ~ transType1.1*Group*wave*Comply +
+                      transType1.2*Group*wave*Comply +
+                      transType1.3*Group*wave*Comply +
+                      transType2.1*Group*wave +
+                      transType2.2*Group*wave +
+                      transType2.3*Group*wave +
+                      transType3.1*Group*wave +
+                      transType3.2*Group*wave +
+                      transType3.3*Group*wave+(1|subject), data = brms.datmod2, family=weibull())
+
+priors$prior[1:56] <- "normal(0, 5)"
+priors$prior[60] <- "constant(.4)"
+
+initial.brm <- brm(stayLength ~ transType1.1*Group*wave*Comply +
+                     transType1.2*Group*wave*Comply +
+                     transType1.3*Group*wave*Comply +
+                     transType2.1*Group*wave +
+                     transType2.2*Group*wave +
+                     transType2.3*Group*wave +
+                     transType3.1*Group*wave +
+                     transType3.2*Group*wave +
+                     transType3.3*Group*wave +(1|subject), data = brms.datmod2, 
+                   family=weibull(),iter = 500, warmup = 200, cores = 2, chains = 2,seed=16,thin=3,  
+                   control = list(max_treedepth=15, adapt_delta=.8),prior = priors)
+saveRDS(initial.brm, file = "~/Desktop/initialBrmsReduce.RDS")
