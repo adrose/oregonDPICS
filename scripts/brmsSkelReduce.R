@@ -478,11 +478,11 @@ brms.datmod2$Command <- FALSE
 brms.datmod2$Command[which(brms.datmod2$childBehavior %in% c("Comply", "nonComply") & 
                              brms.datmod2$transType %in% c("1 1", "1 2", "1 3"))] <- TRUE
 
-priors <- get_prior(stayLength ~ (transType+Group+wave)^3+Comply*Command*Group*wave+(1|subject), data = brms.datmod2, family=weibull())
-priors$prior[52] <- "constant(.3)"
-priors$prior[53] <- "constant(1.2)"
-initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+Comply*Command*Group*wave+(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 100, warmup = 50, cores = 2, chains = 2,seed=16,thin=3,  
-                   control = list(max_treedepth=15, adapt_delta=.8), prior = priors)
+priors <- get_prior(stayLength ~ (transType+Group+wave)^3+Comply*Group*wave+(1|subject), data = brms.datmod2, family=weibull())
+priors$prior[44] <- "constant(.3)"
+priors$prior[45] <- "constant(1.2)"
+initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+Comply*Group*wave*nextState+(1|subject), data = brms.datmod2, 
+                   family=weibull(),iter = 3000, warmup = 1000, cores = 3, chains = 3,seed=16,thin=3,  
+                   control = list(max_treedepth=15, adapt_delta=.99), prior = priors)
 
 saveRDS(initial.brm, file = "~/Desktop/initialBrmsReduce.RDS")

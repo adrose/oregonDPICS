@@ -467,20 +467,6 @@ brms.datmod2$Comply <- FALSE
 brms.datmod2$Comply[brms.datmod2$childBehavior=="Comply"] <- TRUE
 
 ## Turn the transType into binary factor values
-factorRep <- model.matrix( ~ -1 + transType, data = brms.datmod2)
-factorRep <- data.frame(factorRep)
-colnames(factorRep)
-brms.datmod2 <- bind_cols(brms.datmod2, factorRep)
-priors <- get_prior(stayLength ~ transType1.1*Group*wave*Comply +
-                      transType1.2*Group*wave*Comply +
-                      transType1.3*Group*wave*Comply +
-                      transType2.1*Group*wave +
-                      transType2.2*Group*wave +
-                      transType2.3*Group*wave +
-                      transType3.1*Group*wave +
-                      transType3.2*Group*wave +
-                      transType3.3*Group*wave +
-                    +(1|subject), data = brms.datmod2, family=weibull())
 #priors$prior[1:64] <- "normal(0, 5)"
 ## Check first iteration model
 #iter.one <- readRDS("./Documents/oregonDPICS/data/outBRMSModInit23.RDS")
@@ -488,18 +474,9 @@ priors <- get_prior(stayLength ~ transType1.1*Group*wave*Comply +
 ## Constrain priors
 ## Start with transition types
 #priors$prior[1:92] <- "normal(1,6)"
-
-initial.brm <- brm(stayLength ~ transType1.1*Group*wave*Comply +
-                     transType1.2*Group*wave*Comply +
-                     transType1.3*Group*wave*Comply +
-                     transType2.1*Group*wave +
-                     transType2.2*Group*wave +
-                     transType2.3*Group*wave +
-                     transType3.1*Group*wave +
-                     transType3.2*Group*wave +
-                     transType3.3*Group*wave +(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 10000, warmup = 3000, cores = 4, chains = 4,seed=16, 
-                   control = list(max_treedepth=15, adapt_delta=.99))#,prior = priors)
+initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+Comply*Group*wave*nextState+(1|subject), data = brms.datmod2, 
+                   family=weibull(),iter = 4000, warmup = 2000, cores = 3, chains = 3,seed=16,thin=3,  
+                   control = list(max_treedepth=15, adapt_delta=.99))#, prior = priors)
 
 saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/outBRMSModInit23Prior.RDS")
 q()
