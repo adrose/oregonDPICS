@@ -436,7 +436,9 @@ for(i in 1:nrow(brms.dat)){
 }
 ## Fix the edge cases
 brms.dat$childBehavior[which(brms.dat$childBehavior=="Comply" & brms.dat$transType=="2 3")] <- "NoBehavior"
-brms.dat$childBehavior[which(brms.dat$childBehavior=="Comply" & brms.dat$transType=="2 4")] <- "NoBehavior"
+brms.dat$childBehavior[which(brms.dat$childBehavior=="Comply" & brms.dat$transType=="2 1")] <- "NoBehavior"
+brms.dat$childBehavior[which(brms.dat$childBehavior=="Comply" & brms.dat$transType=="2 2")] <- "NoBehavior"
+
 brms.datAll <- brms.dat
 brms.datAll <- merge(brms.datAll, caps.data, by.x="subject", by.y = "FAMILY", all.x=TRUE)
 brms.datmod <- brms.datAll[which(brms.datAll$Block==3 & brms.datAll$subject %in% unique(brms.datAll$subject)),]
@@ -455,7 +457,7 @@ brms.datmod2 <- brms.datmod[complete.cases(brms.datmod$Group),]
 ## Remove dyads with very infrequent actions -- starting at more than 30 verbal interactions
 for(i in unique(brms.datmod2$V1)){
   iso.vals <- which(brms.datmod2$V1==i)
-  if(length(iso.vals) < 40){
+  if(length(iso.vals) < 40 | length(iso.vals) > 300){
     print(i)
     brms.datmod2 <- brms.datmod2[-iso.vals,]  
   }
@@ -469,28 +471,18 @@ factorRep <- data.frame(factorRep)
 colnames(factorRep)
 brms.datmod2 <- bind_cols(brms.datmod2, factorRep)
 
-priors <- get_prior(stayLength ~ transType1.1*Group*wave*Comply +
-                      transType1.2*Group*wave*Comply +
-                      transType1.3*Group*wave*Comply +
-                      transType2.1*Group*wave +
-                      transType2.2*Group*wave +
-                      transType2.3*Group*wave +
-                      transType3.1*Group*wave +
-                      transType3.2*Group*wave +
-                      transType3.3*Group*wave+(1|subject), data = brms.datmod2, family=weibull())
 
-priors$prior[1:56] <- "normal(0, 5)"
-priors$prior[60] <- "constant(.4)"
+## Correct the one comply outside of the 1 trans out of
+brms.datmod2$Comply[brms.datmod2$transType=="2 2"] <- FALSE
+brms.datmod2$Command <- FALSE
+brms.datmod2$Command[which(brms.datmod2$childBehavior %in% c("Comply", "nonComply") & 
+                             brms.datmod2$transType %in% c("1 1", "1 2", "1 3"))] <- TRUE
 
-initial.brm <- brm(stayLength ~ transType1.1*Group*wave*Comply +
-                     transType1.2*Group*wave*Comply +
-                     transType1.3*Group*wave*Comply +
-                     transType2.1*Group*wave +
-                     transType2.2*Group*wave +
-                     transType2.3*Group*wave +
-                     transType3.1*Group*wave +
-                     transType3.2*Group*wave +
-                     transType3.3*Group*wave +(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 500, warmup = 200, cores = 2, chains = 2,seed=16,thin=3,  
-                   control = list(max_treedepth=15, adapt_delta=.8),prior = priors)
+priors <- get_prior(stayLength ~ (transType+Group+wave)^3+Comply*Command*Group*wave+(1|subject), data = brms.datmod2, family=weibull())
+priors$prior[52] <- "constant(.3)"
+priors$prior[53] <- "constant(1.2)"
+initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+Comply*Command*Group*wave+(1|subject), data = brms.datmod2, 
+                   family=weibull(),iter = 100, warmup = 50, cores = 2, chains = 2,seed=16,thin=3,  
+                   control = list(max_treedepth=15, adapt_delta=.8), prior = priors)
+
 saveRDS(initial.brm, file = "~/Desktop/initialBrmsReduce.RDS")
