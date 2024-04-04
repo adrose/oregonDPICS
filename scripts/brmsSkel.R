@@ -474,69 +474,7 @@ brms.datmod2$Comply[brms.datmod2$childBehavior=="Comply"] <- TRUE
 ## Constrain priors
 ## Start with transition types
 #priors$prior[1:92] <- "normal(1,6)"
-initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+Comply*Group*wave*nextState+(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 4000, warmup = 2000, cores = 3, chains = 3,seed=16,thin=3,  
-                   control = list(max_treedepth=15, adapt_delta=.99))#, prior = priors)
-
-saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/outBRMSModInit23Prior.RDS")
-q()
-initial.brm <- readRDS("~/Documents/oregonDPICS/data/outBRMSModInit.RDS")
-initial.brm <- readRDS("~/Downloads/outBRMSModInit23.RDS")
-shinystan::launch_shinystan(initial.brm)
-
-
-library(tidybayes)
-## Plot the initial estimates
-initial.brm %>% spread_draws(
-  b_transType11,
-  b_transType12,
-  b_transType13,
-  b_transType14,
-  b_transType21,
-  b_transType22,
-  b_transType23,
-  b_transType24,
-  b_transType31,
-  b_transType32,
-  b_transType33,
-  b_transType34,
-  b_transType41,
-  b_transType42,
-  b_transType43,
-  b_transType44,
-  ) %>%
-  mutate (w11= b_transType11) %>%
-  mutate (w12= b_transType12) %>%
-  mutate (w13= b_transType13) %>%
-  mutate (w14= b_transType14) %>%
-  mutate (w21= b_transType21) %>%
-  mutate (w22= b_transType22) %>%
-  mutate (w23= b_transType23) %>%
-  mutate (w24= b_transType24) %>%
-  mutate (w31= b_transType31) %>%
-  mutate (w32= b_transType32) %>%
-  mutate (w33=b_transType33) %>%
-  mutate (w34=b_transType34) %>%
-  mutate (w41=b_transType41) %>%
-  mutate (w42=b_transType42) %>%
-  mutate (w43=b_transType43) %>%
-  mutate (w44=b_transType44) %>%
-  filter(.chain %in% c(2, 4)) %>% 
-  select (.chain:.draw, w11:w44) %>%
-  gather ('tt', 'stay', 4:19) %>%
-mutate (tt= fct_relevel (tt,'w11','w12', 'w13', 'w14', 'w21', 'w22','w23','w24','w31','w32','w33','w34','w41','w42','w43','w44')) %>%
-  group_by (tt) %>%
-  ggplot (aes (y= stay, x= tt)) +
-  ylab ('Estimated stay duration [sec]') +
-  xlab ('Transitions') +
-  stat_interval (.width= c (.5, .75, .95, .99)) +
-  scale_color_brewer () +
-  stat_summary (fun= median, geom= 'point', shape= 20, size= 2, color= 'darkblue', fill= 'darkblue')
-conditional_effects(initial.brm)
-withhistory.brm <- brm(stayLength ~ -1 + (transType+statePrev+timePrev+wave+childBehavior)^4 + (1 | subject), data = brms.datmod, family=weibull(),iter = 5000, warmup = 1000, cores = 5, chains = 5, seed=16, control = list(max_treedepth=15, adapt_delta=.9))
-conditional_effects(withhistory.brm)
-
-## Now explore a model including the children's behavbiors
-indiv.model.Child <- brm(stayLength ~ -1 + (transType*statePrev*timePrev*wave*childBehavior) + (1+ | subject), data = brms.datmod, family=weibull(),iter = 5000, warmup = 1000, cores = 5)
-saveRDS(indiv.model, "~/Documents/oregonDPICS/data/outBRMSModChild.RDS")
-conditional_effects(indiv.model.Child)
+initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+(1|subject), data = brms.datmod2, 
+                   family=weibull(),iter = 5000, warmup = 2000, cores = 3, chains = 3,seed=16,thin=5,  
+                   control = list(max_treedepth=15, adapt_delta=.99), prior = priors)
+saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/allTransTypeMod.RDS")

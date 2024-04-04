@@ -477,12 +477,9 @@ brms.datmod2$Comply[brms.datmod2$transType=="2 2"] <- FALSE
 brms.datmod2$Command <- FALSE
 brms.datmod2$Command[which(brms.datmod2$childBehavior %in% c("Comply", "nonComply") & 
                              brms.datmod2$transType %in% c("1 1", "1 2", "1 3"))] <- TRUE
-
-priors <- get_prior(stayLength ~ (transType+Group+wave)^3+Comply*Group*wave+(1|subject), data = brms.datmod2, family=weibull())
-priors$prior[44] <- "constant(.3)"
-priors$prior[45] <- "constant(1.2)"
-initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+Comply*Group*wave*nextState+(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 3000, warmup = 1000, cores = 3, chains = 3,seed=16,thin=3,  
-                   control = list(max_treedepth=15, adapt_delta=.99), prior = priors)
-
-saveRDS(initial.brm, file = "~/Desktop/initialBrmsReduce.RDS")
+brms.datmod2$nextState <- factor(brms.datmod2$nextState, levels=c(1,2,3))
+tiny.dat <- brms.datmod2[which(!brms.datmod2$childBehavior %in% c("Comply", "nonComply")),]
+initial.brm2 <- brm(stayLength ~ (nextState+Comply+Group+wave)^4+(1|subject), data = tiny.dat,
+                    family=weibull(),iter = 5000, warmup = 2000, cores = 3, chains = 3,seed=16,thin=3,  
+                    control = list(max_treedepth=15, adapt_delta=.99))
+saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/complyEffectMod.RDS")
