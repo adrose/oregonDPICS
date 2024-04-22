@@ -465,6 +465,9 @@ for(i in unique(brms.datmod2$V1)){
 ## Now thin down the child behavior to only comply versus any other behavior
 brms.datmod2$Comply <- FALSE
 brms.datmod2$Comply[brms.datmod2$childBehavior=="Comply"] <- TRUE
+## Export these data for the dissertation
+
+saveRDS(brms.datmod2, file="~/Documents/dissertationWriting/data/dpicsDataAll.RDS")
 
 ## Turn the transType into binary factor values
 #priors$prior[1:64] <- "normal(0, 5)"
@@ -474,7 +477,32 @@ brms.datmod2$Comply[brms.datmod2$childBehavior=="Comply"] <- TRUE
 ## Constrain priors
 ## Start with transition types
 #priors$prior[1:92] <- "normal(1,6)"
-initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+(1|subject), data = brms.datmod2, 
-                   family=weibull(),iter = 5000, warmup = 2000, cores = 3, chains = 3,seed=16,thin=5,  
-                   control = list(max_treedepth=15, adapt_delta=.99), prior = priors)
-saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/allTransTypeMod.RDS")
+# initial.brm <- brm(stayLength ~ (transType+Group+wave)^3+(1|subject), data = brms.datmod2, 
+#                    family=weibull(),iter = 2000, warmup = 1000, cores = 3, chains = 3,seed=16,thin=2,  
+#                    control = list(max_treedepth=15, adapt_delta=.99))
+brms.datmod2$Comply[brms.datmod2$Comply==TRUE & brms.datmod2$transType=="2 2"] <- FALSE
+initial.brm2 <- brm(stayLength ~ (transType+Group+wave+Comply)^4+(1|subject), data = brms.datmod2,
+                   family=weibull(),iter = 2000, warmup = 1000, cores = 3, chains = 3,seed=16,thin=2,
+                   control = list(max_treedepth=15, adapt_delta=.99))
+
+
+# saveRDS(initial.brm, file = "~/Documents/oregonDPICS/data/allTransTypeMod.RDS")
+
+initial.brm <- readRDS("~/Documents/oregonDPICS/data/allTransTypeMod.RDS")
+
+## Now plot some of these effects
+brms.datmod2$predVals <- predict(initial.brm)[,1]
+
+plot.vals <- summarySE(data=brms.datmod2, measurevar="predVals",groupvars = c("transType", "Group", "wave"))
+
+## Now plot these
+plot.vals %>% ggplot(., aes(x=transType, y=predVals, group=wave, fill=wave)) +
+  geom_bar(stat="identity", position=position_dodge(width = 1)) +
+  facet_grid(. ~ Group) +
+  geom_errorbar(aes(ymin = predVals - se, ymax = predVals + se), position = position_dodge(width = 1), width=.4)
+
+
+## Now do violin plot
+brms.datmod2 %>% ggplot(., aes(x=wave, y=stayLength, group=wave, fill=wave)) +
+  geom_violin() +
+  facet_grid(Group~transType)
